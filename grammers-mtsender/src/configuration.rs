@@ -6,6 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use grammers_tl_types::enums;
+
 const DEFAULT_LOCALE: &str = "en";
 
 /// Connection parameters used whenever a new connection is initialized.
@@ -36,6 +38,8 @@ pub struct ConnectionParams {
     /// the host manually and selecting an IP address of your choice.
     #[cfg(feature = "proxy")]
     pub proxy_url: Option<String>,
+
+    pub params: Option<enums::Jsonvalue>,
     #[doc(hidden)]
     __non_exhaustive: (),
 }
@@ -67,6 +71,7 @@ impl Default for ConnectionParams {
             lang_code,
             #[cfg(feature = "proxy")]
             proxy_url: None,
+            params: None,
             __non_exhaustive: (),
         }
     }
