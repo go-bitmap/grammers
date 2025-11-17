@@ -1,7 +1,7 @@
 // Copyright 2020 - developers of the `grammers` project.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// https://www.apache.org/licenses/LICENSE-2-0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
@@ -12,15 +12,25 @@ use crate::types::DcOption;
 
 pub(crate) const DEFAULT_DC: i32 = 2;
 
+// Port configuration: use test port (20443) when test feature is enabled, otherwise production port (443)
+#[cfg(feature = "test")]
+const PORT: u16 = 20443;
+#[cfg(not(feature = "test"))]
+pub(crate) const PORT: u16 = 443;
+
 const fn ipv4(a: u8, b: u8, c: u8, d: u8) -> SocketAddrV4 {
-    SocketAddrV4::new(Ipv4Addr::new(a, b, c, d), 443)
+    SocketAddrV4::new(Ipv4Addr::new(a, b, c, d), PORT)
 }
 
 const fn ipv6(a: u8, b: u8, c: u8, d: u8) -> SocketAddrV6 {
-    SocketAddrV6::new(ipv4(a, b, c, d).ip().to_ipv6_compatible(), 443, 0, 0)
+    SocketAddrV6::new(ipv4(a, b, c, d).ip().to_ipv6_compatible(), PORT, 0, 0)
 }
 
 /// Hardcoded known `static` options from `functions::help::GetConfig`.
+///
+/// When the `test` feature is enabled, uses test server addresses (port 20443).
+/// Otherwise, uses production server addresses (port 443).
+#[cfg(not(feature = "test"))]
 pub(crate) const KNOWN_DC_OPTIONS: [DcOption; 5] = [
     DcOption {
         id: 1,
@@ -50,6 +60,40 @@ pub(crate) const KNOWN_DC_OPTIONS: [DcOption; 5] = [
         id: 5,
         ipv4: ipv4(91, 108, 56, 104),
         ipv6: ipv6(91, 108, 56, 104),
+        auth_key: None,
+    },
+];
+
+#[cfg(feature = "test")]
+pub(crate) const KNOWN_DC_OPTIONS: [DcOption; 5] = [
+    DcOption {
+        id: 1,
+        ipv4: ipv4(183, 6, 91, 132),
+        ipv6: ipv6(183, 6, 91, 132),
+        auth_key: None,
+    },
+    DcOption {
+        id: 2,
+        ipv4: ipv4(183, 6, 91, 132),
+        ipv6: ipv6(183, 6, 91, 132),
+        auth_key: None,
+    },
+    DcOption {
+        id: 3,
+        ipv4: ipv4(183, 6, 91, 132),
+        ipv6: ipv6(183, 6, 91, 132),
+        auth_key: None,
+    },
+    DcOption {
+        id: 4,
+        ipv4: ipv4(183, 6, 91, 132),
+        ipv6: ipv6(183, 6, 91, 132),
+        auth_key: None,
+    },
+    DcOption {
+        id: 5,
+        ipv4: ipv4(183, 6, 91, 132),
+        ipv6: ipv6(183, 6, 91, 132),
         auth_key: None,
     },
 ];

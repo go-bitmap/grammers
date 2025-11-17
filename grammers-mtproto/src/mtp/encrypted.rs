@@ -20,6 +20,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 ///
 /// Not an `usize` because the API expects a signed `i32`. Should be more than two because the
 /// code expects to fetch more salts when going from two to one.
+#[cfg(not(feature = "test"))]
 const NUM_FUTURE_SALTS: i32 = 64;
 
 /// When switching to a different salt, how many seconds must have passed since its `valid_since`.
@@ -238,12 +239,16 @@ impl Encrypted {
             // This would break, because we couldn't identify the response.
             //
             // So salts are only requested once we have a valid salt to reduce the chances of this happening.
-            info!("only one future salt remaining; asking for more salts");
-            let body = tl::functions::GetFutureSalts {
-                num: NUM_FUTURE_SALTS,
+            #[cfg(not(feature = "test"))]
+            {
+                info!("only one future salt remaining; asking for more salts");
+                let body = tl::functions::GetFutureSalts {
+                    num: crate::mtp::encrypted::NUM_FUTURE_SALTS,
+                }
+                    .to_bytes();
+                self.salt_request_msg_id = Some(self.serialize_msg(buffer, &body, true));
             }
-            .to_bytes();
-            self.salt_request_msg_id = Some(self.serialize_msg(buffer, &body, true));
+
         }
     }
 

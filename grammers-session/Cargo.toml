@@ -13,6 +13,10 @@ keywords = ["telegram", "tl"]
 categories = []
 edition = "2024"
 
+[features]
+default = []
+test = []
+
 [dependencies]
 grammers-tl-types = { path = "../grammers-tl-types", version = "0.8.0" }
 log = "0.4.28"

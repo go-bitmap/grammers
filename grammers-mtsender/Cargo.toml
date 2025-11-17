@@ -20,7 +20,7 @@ proxy = ["tokio-socks", "hickory-resolver", "url"]
 base64 = "0.22"
 bytes = "1.10.1"
 grammers-crypto = { path = "../grammers-crypto", version = "0.8.0" }
-grammers-mtproto = { path = "../grammers-mtproto", version = "0.8.0" }
+grammers-mtproto = { path = "../grammers-mtproto", version = "0.8.0",features = ["default"] }
 grammers-session = { path = "../grammers-session", version = "0.8.0" }
 grammers-tl-types = { path = "../grammers-tl-types", version = "0.8.0", features = [ "tl-mtproto" ] }
 locate-locale = "0.2.0"
