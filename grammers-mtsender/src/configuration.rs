@@ -39,7 +39,7 @@ pub struct ConnectionParams {
     #[cfg(feature = "proxy")]
     pub proxy_url: Option<String>,
 
-    pub params: Option<enums::Jsonvalue>,
+    pub params: Option<String>,
     #[doc(hidden)]
     __non_exhaustive: (),
 }
