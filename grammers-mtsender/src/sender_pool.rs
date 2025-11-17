@@ -13,18 +13,20 @@ use grammers_mtproto::{mtp, transport};
 use grammers_session::Session;
 use grammers_session::types::DcOption;
 use grammers_session::updates::UpdatesLike;
-use grammers_tl_types::{self as tl, enums};
+use grammers_tl_types::{self as tl, enums, Deserializable};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::{fmt, panic};
+use base64::Engine;
+use base64::engine::general_purpose;
 use tokio::task::AbortHandle;
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinSet,
 };
 
-pub(crate) type Transport = transport::Full;
+pub(crate) type Transport = transport::Abridged;
 
 type InvokeResponse = Vec<u8>;
 
@@ -259,8 +261,8 @@ impl SenderPoolRunner {
     async fn connect_sender(
         &mut self,
         dc_option: &DcOption,
-    ) -> Result<Sender<transport::Full, mtp::Encrypted>, InvocationError> {
-        let transport = transport::Full::new;
+    ) -> Result<Sender<transport::Abridged, mtp::Encrypted>, InvocationError> {
+        let transport = transport::Abridged::new;
 
         #[cfg(feature = "proxy")]
         let addr = || {
@@ -291,7 +293,23 @@ impl SenderPoolRunner {
                 lang_pack: "".into(),
                 lang_code: self.connection_params.lang_code.clone(),
                 proxy: None,
-                params: None,
+                params: self.connection_params.params.as_ref().and_then(|p| {
+                    match general_purpose::STANDARD.decode(p.clone()) {
+                        Ok(bytes) => {
+                            match enums::Jsonvalue::from_bytes(&*bytes) {
+                                Ok(json_value) => {
+                                    Some(json_value)
+                                }
+                                Err(_) => {
+                                    None
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            None
+                        }
+                    }
+                }),
                 query: tl::functions::help::GetConfig {},
             },
         };

@@ -17,6 +17,7 @@ edition = "2024"
 proxy = ["tokio-socks", "hickory-resolver", "url"]
 
 [dependencies]
+base64 = "0.22"
 bytes = "1.10.1"
 grammers-crypto = { path = "../grammers-crypto", version = "0.8.0" }
 grammers-mtproto = { path = "../grammers-mtproto", version = "0.8.0" }
