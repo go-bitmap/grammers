@@ -57,9 +57,9 @@ async fn async_main() -> Result<()> {
     if !client.is_authorized().await? {
         println!("Signing in...");
         let phone = prompt("Enter your phone number (international format): ")?;
-        let token = client.request_login_code(&phone, env!("TG_HASH")).await?;
+        let token = client.request_login_code(&phone.trim(), env!("TG_HASH")).await?;
         let code = prompt("Enter the code you received: ")?;
-        let signed_in = client.sign_in(&token, &code).await;
+        let signed_in = client.sign_in(&token, &code.trim()).await;
         match signed_in {
             Err(SignInError::PasswordRequired(password_token)) => {
                 // Note: this `prompt` method will echo the password in the console.

@@ -121,8 +121,20 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
     ///
     /// Note that this does not attempt to invoke [`tl::functions::InitConnection`].
     /// It will simply open a new socket connection to the provided address.
-    pub async fn connect(transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
-        let stream = NetStream::connect(&addr).await?;
+    pub async fn connect(mut transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
+        let mut stream = NetStream::connect(&addr).await?;
+
+        // Send transport protocol header separately if needed (e.g., 0xef for abridged transport)
+        let mut header_buffer = DequeBuffer::with_capacity(16, 0);
+        transport.write_header(&mut header_buffer);
+        if !header_buffer.is_empty() {
+            let (_reader, mut writer) = stream.split();
+            writer.write_all(header_buffer.as_ref()).await?;
+            drop(writer);
+            // Sleep 40ms after sending protocol header
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
         Ok(Self {
             stream,
             transport,

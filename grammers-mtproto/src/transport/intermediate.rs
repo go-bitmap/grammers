@@ -46,8 +46,14 @@ impl Transport for Intermediate {
 
         buffer.extend_front(&(len as i32).to_le_bytes());
 
+        // Protocol header TAG should be sent separately when connecting,
+        // not prepended to the first packet. This prevents issues with data corruption.
+        // The init flag is kept for compatibility but the header is not added here.
+    }
+
+    fn write_header(&mut self, buffer: &mut DequeBuffer<u8>) {
         if !self.init {
-            buffer.extend_front(&Self::TAG);
+            buffer.extend(&Self::TAG);
             self.init = true;
         }
     }
@@ -103,7 +109,8 @@ mod tests {
     fn pack_empty() {
         let (mut transport, mut buffer) = setup_pack(0);
         transport.pack(&mut buffer);
-        assert_eq!(&buffer[..], &[0xee, 0xee, 0xee, 0xee, 0, 0, 0, 0]);
+        // Protocol header is no longer included in pack, only length header
+        assert_eq!(&buffer[..], &[0, 0, 0, 0]);
     }
 
     #[test]
@@ -118,8 +125,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        assert_eq!(&buffer[..8], &[0xee, 0xee, 0xee, 0xee, 128, 0, 0, 0]);
-        assert_eq!(&buffer[8..buffer.len()], &orig[..]);
+        // Protocol header is no longer included in pack, only length header
+        assert_eq!(&buffer[..4], &[128, 0, 0, 0]);
+        assert_eq!(&buffer[4..buffer.len()], &orig[..]);
     }
 
     #[test]
@@ -135,9 +143,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        let n = 4; // init bytes
-        let offset = transport.unpack(&mut buffer[n..]).unwrap();
-        assert_eq!(&buffer[n..][offset.data_range], &orig[..]);
+        // Protocol header is sent separately, so unpack starts from the beginning
+        let offset = transport.unpack(&mut buffer[..]).unwrap();
+        assert_eq!(&buffer[offset.data_range], &orig[..]);
     }
 
     #[test]
@@ -147,7 +155,7 @@ mod tests {
 
         let mut two_buffer = DequeBuffer::with_capacity(0, 0);
         transport.pack(&mut buffer);
-        two_buffer.extend(&buffer[4..]); // init bytes
+        two_buffer.extend(&buffer[..]); // no init bytes anymore
         let single_size = two_buffer.len();
 
         buffer = orig.clone();

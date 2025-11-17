@@ -101,6 +101,14 @@ pub trait Transport {
     /// with the data on the ranges from previous `UnpackedOffset` removed.
     /// Failing to do so will cause transports such as [`Obfuscated`] to misbehave.
     fn unpack(&mut self, buffer: &mut [u8]) -> Result<UnpackedOffset, Error>;
+
+    /// Returns the protocol header bytes that should be sent separately when connecting.
+    /// Returns an empty slice if no header is needed.
+    ///
+    /// For abridged transport, this returns `[0xef]` which must be sent before the first packet.
+    fn write_header(&mut self, buffer: &mut DequeBuffer<u8>) {
+        let _ = buffer;
+    }
 }
 
 /// The trait used by the obfuscated transport to get the transport tags.

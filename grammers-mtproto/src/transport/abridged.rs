@@ -58,8 +58,14 @@ impl Transport for Abridged {
             buffer.extend_front(&(0x7f | ((len as u32) << 8)).to_le_bytes());
         }
 
+        // Protocol header 0xef should be sent separately when connecting,
+        // not prepended to the first packet. This prevents issues with data corruption.
+        // The init flag is kept for compatibility but the header is not added here.
+    }
+
+    fn write_header(&mut self, buffer: &mut DequeBuffer<u8>) {
         if !self.init {
-            buffer.extend_front(&[0xef]);
+            buffer.extend(&[0xef]);
             self.init = true;
         }
     }
@@ -129,7 +135,8 @@ mod tests {
     fn pack_empty() {
         let (mut transport, mut buffer) = setup_pack(0);
         transport.pack(&mut buffer);
-        assert_eq!(&buffer[..], &[0xef, 0]);
+        // Protocol header is no longer included in pack, only length header
+        assert_eq!(&buffer[..], &[0]);
     }
 
     #[test]
@@ -144,8 +151,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        assert_eq!(&buffer[..2], &[0xef, 32]);
-        assert_eq!(&buffer[2..], &orig[..]);
+        // Protocol header is no longer included in pack, only length header
+        assert_eq!(&buffer[..1], &[32]);
+        assert_eq!(&buffer[1..], &orig[..]);
     }
 
     #[test]
@@ -153,8 +161,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(1024);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        assert_eq!(&buffer[..5], &[0xef, 127, 0, 1, 0]);
-        assert_eq!(&buffer[5..], &orig[..]);
+        // Protocol header is no longer included in pack, only length header
+        assert_eq!(&buffer[..4], &[127, 0, 1, 0]);
+        assert_eq!(&buffer[4..], &orig[..]);
     }
 
     #[test]
@@ -170,9 +179,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        let n = 1; // init byte
-        let offset = transport.unpack(&mut buffer[n..][..]).unwrap();
-        assert_eq!(&buffer[n..][offset.data_range], &orig[..]);
+        // Protocol header is sent separately, so unpack starts from the beginning
+        let offset = transport.unpack(&mut buffer[..]).unwrap();
+        assert_eq!(&buffer[offset.data_range], &orig[..]);
     }
 
     #[test]
@@ -182,7 +191,7 @@ mod tests {
 
         let mut two_buffer = DequeBuffer::with_capacity(0, 0);
         transport.pack(&mut buffer);
-        two_buffer.extend(&buffer[1..]); // init byte
+        two_buffer.extend(&buffer[..]); // no init byte anymore
         let single_size = two_buffer.len();
 
         buffer = orig.clone();
@@ -203,9 +212,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(1024);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        let n = 1; // init byte
-        let offset = transport.unpack(&mut buffer[n..]).unwrap();
-        assert_eq!(&buffer[n..][offset.data_range], &orig[..]);
+        // Protocol header is sent separately, so unpack starts from the beginning
+        let offset = transport.unpack(&mut buffer[..]).unwrap();
+        assert_eq!(&buffer[offset.data_range], &orig[..]);
     }
 
     #[test]
