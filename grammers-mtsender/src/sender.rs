@@ -584,6 +584,7 @@ pub async fn connect<T: Transport>(
     addr: ServerAddr,
 ) -> Result<Sender<T, mtp::Encrypted>, InvocationError> {
     let sender = Sender::connect(transport, mtp::Plain::new(), addr).await?;
+    debug!("connect...");
     generate_auth_key(sender).await
 }
 
@@ -635,5 +636,6 @@ pub async fn connect_with_auth<T: Transport>(
     addr: ServerAddr,
     auth_key: [u8; 256],
 ) -> Result<Sender<T, mtp::Encrypted>, io::Error> {
+    debug!("connecting with auth key...");
     Sender::connect(transport, mtp::Encrypted::build().finish(auth_key), addr).await
 }
