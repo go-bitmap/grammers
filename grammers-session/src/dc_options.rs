@@ -12,9 +12,8 @@ use crate::types::DcOption;
 
 pub(crate) const DEFAULT_DC: i32 = 2;
 
-// Port configuration: use test port (20443) when test feature is enabled, otherwise production port (443)
 #[cfg(feature = "test")]
-const PORT: u16 = 20443;
+const PORT: u16 = 35349;
 #[cfg(not(feature = "test"))]
 pub(crate) const PORT: u16 = 443;
 
@@ -68,32 +67,32 @@ pub(crate) const KNOWN_DC_OPTIONS: [DcOption; 5] = [
 pub(crate) const KNOWN_DC_OPTIONS: [DcOption; 5] = [
     DcOption {
         id: 1,
-        ipv4: ipv4(183, 6, 91, 132),
-        ipv6: ipv6(183, 6, 91, 132),
+        ipv4: ipv4(47, 237, 112, 224),
+        ipv6: ipv6(47, 237, 112, 224),
         auth_key: None,
     },
     DcOption {
         id: 2,
-        ipv4: ipv4(183, 6, 91, 132),
-        ipv6: ipv6(183, 6, 91, 132),
+        ipv4: ipv4(47, 237, 112, 224),
+        ipv6: ipv6(47, 237, 112, 224),
         auth_key: None,
     },
     DcOption {
         id: 3,
-        ipv4: ipv4(183, 6, 91, 132),
-        ipv6: ipv6(183, 6, 91, 132),
+        ipv4: ipv4(47, 237, 112, 224),
+        ipv6: ipv6(47, 237, 112, 224),
         auth_key: None,
     },
     DcOption {
         id: 4,
-        ipv4: ipv4(183, 6, 91, 132),
-        ipv6: ipv6(183, 6, 91, 132),
+        ipv4: ipv4(47, 237, 112, 224),
+        ipv6: ipv6(47, 237, 112, 224),
         auth_key: None,
     },
     DcOption {
         id: 5,
-        ipv4: ipv4(183, 6, 91, 132),
-        ipv6: ipv6(183, 6, 91, 132),
+        ipv4: ipv4(47, 237, 112, 224),
+        ipv6: ipv6(47, 237, 112, 224),
         auth_key: None,
     },
 ];
