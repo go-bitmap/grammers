@@ -146,6 +146,28 @@ impl SenderPool {
         api_id: i32,
         connection_params: ConnectionParams,
     ) -> Self {
+        // Initialize DC options based on environment if session doesn't have them yet
+        let session_ref = session.as_ref();
+        let test_mode = connection_params.test_mode;
+        let dc_options = grammers_session::known_dc_options(test_mode);
+
+        // Check if session already has DC options by checking a common DC ID
+        // If the port doesn't match the desired environment, reinitialize
+        let needs_init = match session_ref.dc_option(2) {
+            None => true,
+            Some(opt) => {
+                let expected_port = if test_mode { 35349 } else { 443 };
+                opt.ipv4.port() != expected_port
+            }
+        };
+
+        if needs_init {
+            // Initialize DC options for the specified environment
+            for dc_option in &dc_options {
+                session_ref.set_dc_option(dc_option);
+            }
+        }
+
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (updates_tx, updates_rx) = mpsc::unbounded_channel();
 

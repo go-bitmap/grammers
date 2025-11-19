@@ -239,16 +239,12 @@ impl Encrypted {
             // This would break, because we couldn't identify the response.
             //
             // So salts are only requested once we have a valid salt to reduce the chances of this happening.
-            #[cfg(not(feature = "test"))]
-            {
-                info!("only one future salt remaining; asking for more salts");
-                let body = tl::functions::GetFutureSalts {
-                    num: crate::mtp::encrypted::NUM_FUTURE_SALTS,
-                }
-                    .to_bytes();
-                self.salt_request_msg_id = Some(self.serialize_msg(buffer, &body, true));
+            info!("only one future salt remaining; asking for more salts");
+            let body = tl::functions::GetFutureSalts {
+                num: crate::mtp::encrypted::NUM_FUTURE_SALTS,
             }
-
+            .to_bytes();
+            self.salt_request_msg_id = Some(self.serialize_msg(buffer, &body, true));
         }
     }
 

@@ -42,6 +42,10 @@ pub struct ConnectionParams {
     pub __non_exhaustive: (),
     /// Additional parameters to be passed to the [`initConnection`](https://core.telegram.org/method/initConnection)
     pub params: Option<String>,
+    /// Whether to use test server environment instead of production.
+    /// When `true`, uses test server addresses (port 35349).
+    /// When `false`, uses production server addresses (port 443).
+    pub test_mode: bool,
 }
 
 impl Default for ConnectionParams {
@@ -73,6 +77,7 @@ impl Default for ConnectionParams {
             proxy_url: None,
             __non_exhaustive: (),
             params: None,
+            test_mode: false,
         }
     }
 }
