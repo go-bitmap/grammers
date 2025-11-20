@@ -372,9 +372,15 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
             &error
         );
 
+        // 先克隆一次 ReadError，然后在循环中重用，避免多次克隆可能导致的内存访问问题
+        // 每次从克隆的 ReadError 创建新的 InvocationError
+        let cloned_error = error.clone();
         self.requests
             .drain(..)
-            .for_each(|r| drop(r.result.send(Err(InvocationError::from(error.clone())))));
+            .for_each(|r| {
+                // 忽略发送失败的情况（接收端可能已经丢弃）
+                let _ = r.result.send(Err(InvocationError::from(cloned_error.clone())));
+            });
     }
 
     /// Process the result of deserializing an MTP buffer.

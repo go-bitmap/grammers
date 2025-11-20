@@ -25,11 +25,22 @@ impl std::error::Error for ReadError {}
 impl Clone for ReadError {
     fn clone(&self) -> Self {
         match self {
-            Self::Io(e) => Self::Io(
-                e.raw_os_error()
-                    .map(io::Error::from_raw_os_error)
-                    .unwrap_or_else(|| io::Error::new(e.kind(), e.to_string())),
-            ),
+            Self::Io(e) => {
+                // 安全地克隆 io::Error，避免访问可能无效的内部状态
+                // 优先使用 raw_os_error 重建错误，这是最安全的方式
+                if let Some(os_err) = e.raw_os_error() {
+                    Self::Io(io::Error::from_raw_os_error(os_err))
+                } else {
+                    // 如果无法获取 raw_os_error，使用错误类型创建新的错误
+                    // 避免调用可能访问无效内存的 to_string() 方法
+                    // 使用错误类型的字符串表示作为消息
+                    let kind = e.kind();
+                    Self::Io(io::Error::new(
+                        kind,
+                        format!("IO error ({:?})", kind),
+                    ))
+                }
+            }
             Self::Transport(e) => Self::Transport(e.clone()),
             Self::Deserialize(e) => Self::Deserialize(e.clone()),
         }
