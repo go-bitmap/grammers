@@ -25,11 +25,22 @@ impl std::error::Error for ReadError {}
 impl Clone for ReadError {
     fn clone(&self) -> Self {
         match self {
-            Self::Io(e) => Self::Io(
-                e.raw_os_error()
-                    .map(io::Error::from_raw_os_error)
-                    .unwrap_or_else(|| io::Error::new(e.kind(), e.to_string())),
-            ),
+            Self::Io(e) => {
+                // 安全地克隆 io::Error，避免访问可能无效的内部状态
+                // 优先使用 raw_os_error 重建错误，这是最安全的方式
+                if let Some(os_err) = e.raw_os_error() {
+                    Self::Io(io::Error::from_raw_os_error(os_err))
+                } else {
+                    // 如果无法获取 raw_os_error，使用错误类型创建新的错误
+                    // 避免调用可能访问无效内存的 to_string() 方法
+                    // 使用错误类型的字符串表示作为消息
+                    let kind = e.kind();
+                    Self::Io(io::Error::new(
+                        kind,
+                        format!("IO error ({:?})", kind),
+                    ))
+                }
+            }
             Self::Transport(e) => Self::Transport(e.clone()),
             Self::Deserialize(e) => Self::Deserialize(e.clone()),
         }
@@ -39,7 +50,15 @@ impl Clone for ReadError {
 impl fmt::Display for ReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io(err) => write!(f, "read error, IO failed: {err}"),
+            Self::Io(err) => {
+                // 安全地格式化 io::Error，避免访问可能无效的内部状态
+                // 优先使用 raw_os_error，如果不可用则使用错误类型
+                if let Some(os_err) = err.raw_os_error() {
+                    write!(f, "read error, IO failed: OS error {}", os_err)
+                } else {
+                    write!(f, "read error, IO failed: {:?}", err.kind())
+                }
+            }
             Self::Transport(err) => write!(f, "read error, transport-level: {err}"),
             Self::Deserialize(err) => write!(f, "read error, bad response: {err}"),
         }
@@ -48,7 +67,19 @@ impl fmt::Display for ReadError {
 
 impl From<io::Error> for ReadError {
     fn from(error: io::Error) -> Self {
-        Self::Io(error)
+        // 安全地转换 io::Error，立即进行安全克隆以避免后续访问无效内存
+        // 优先使用 raw_os_error 重建错误，这是最安全的方式
+        if let Some(os_err) = error.raw_os_error() {
+            Self::Io(io::Error::from_raw_os_error(os_err))
+        } else {
+            // 如果无法获取 raw_os_error，使用错误类型创建新的错误
+            // 避免直接包装可能无效的 io::Error
+            let kind = error.kind();
+            Self::Io(io::Error::new(
+                kind,
+                format!("IO error ({:?})", kind),
+            ))
+        }
     }
 }
 
@@ -233,7 +264,14 @@ impl fmt::Display for InvocationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Rpc(err) => write!(f, "request error: {err}"),
-            Self::Io(err) => write!(f, "request error: {err}"),
+            Self::Io(err) => {
+                // 安全地格式化 io::Error，避免访问可能无效的内部状态
+                if let Some(os_err) = err.raw_os_error() {
+                    write!(f, "request error: OS error {}", os_err)
+                } else {
+                    write!(f, "request error: {:?}", err.kind())
+                }
+            }
             Self::Deserialize(err) => write!(f, "request error: {err}"),
             Self::Transport(err) => write!(f, "request error: {err}"),
             Self::Dropped => write!(f, "request error: dropped (cancelled)"),

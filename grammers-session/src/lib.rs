@@ -39,7 +39,6 @@ pub mod updates;
 
 #[allow(deprecated)]
 pub use chat::PeerAuthCache;
-pub use dc_options::known_dc_options;
 pub(crate) use dc_options::{DEFAULT_DC, KNOWN_DC_OPTIONS};
 pub use session::Session;
 pub use session_data::SessionData;

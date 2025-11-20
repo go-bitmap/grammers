@@ -384,9 +384,15 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
             &error
         );
 
+        // 先克隆一次 ReadError，然后在循环中重用，避免多次克隆可能导致的内存访问问题
+        // 每次从克隆的 ReadError 创建新的 InvocationError
+        let cloned_error = error.clone();
         self.requests
             .drain(..)
-            .for_each(|r| drop(r.result.send(Err(InvocationError::from(error.clone())))));
+            .for_each(|r| {
+                // 忽略发送失败的情况（接收端可能已经丢弃）
+                let _ = r.result.send(Err(InvocationError::from(cloned_error.clone())));
+            });
     }
 
     /// Process the result of deserializing an MTP buffer.
@@ -596,6 +602,7 @@ pub async fn connect<T: Transport>(
     addr: ServerAddr,
 ) -> Result<Sender<T, mtp::Encrypted>, InvocationError> {
     let sender = Sender::connect(transport, mtp::Plain::new(), addr).await?;
+    debug!("connect...");
     generate_auth_key(sender).await
 }
 
@@ -647,5 +654,6 @@ pub async fn connect_with_auth<T: Transport>(
     addr: ServerAddr,
     auth_key: [u8; 256],
 ) -> Result<Sender<T, mtp::Encrypted>, io::Error> {
+    debug!("connecting with auth key...");
     Sender::connect(transport, mtp::Encrypted::build().finish(auth_key), addr).await
 }
