@@ -62,15 +62,6 @@ impl Transport for Abridged {
         // 不再在这里添加，以避免 header 和数据包一起发送
     }
 
-    fn write_init_header(&mut self) -> Option<Vec<u8>> {
-        if !self.init {
-            self.init = true;
-            Some(vec![0xef])
-        } else {
-            None
-        }
-    }
-
     fn unpack(&mut self, buffer: &mut [u8]) -> Result<UnpackedOffset, Error> {
         if buffer.is_empty() {
             return Err(Error::MissingBytes);
@@ -112,6 +103,15 @@ impl Transport for Abridged {
             next_offset: header_len + len,
         })
     }
+
+    fn write_init_header(&mut self) -> Option<Vec<u8>> {
+        if !self.init {
+            self.init = true;
+            Some(vec![0xef])
+        } else {
+            None
+        }
+    }
 }
 
 impl Tagged for Abridged {
@@ -136,8 +136,7 @@ mod tests {
     fn pack_empty() {
         let (mut transport, mut buffer) = setup_pack(0);
         transport.pack(&mut buffer);
-        // 注意：初始化 header 现在通过 write_init_header() 单独发送，不再包含在 pack 中
-        assert_eq!(&buffer[..], &[0]);
+        assert_eq!(&buffer[..], &[0xef, 0]);
     }
 
     #[test]
@@ -152,9 +151,8 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        // 注意：初始化 header 现在通过 write_init_header() 单独发送，不再包含在 pack 中
-        assert_eq!(&buffer[..1], &[32]);
-        assert_eq!(&buffer[1..], &orig[..]);
+        assert_eq!(&buffer[..2], &[0xef, 32]);
+        assert_eq!(&buffer[2..], &orig[..]);
     }
 
     #[test]
@@ -162,9 +160,8 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(1024);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        // 注意：初始化 header 现在通过 write_init_header() 单独发送，不再包含在 pack 中
-        assert_eq!(&buffer[..4], &[127, 0, 1, 0]);
-        assert_eq!(&buffer[4..], &orig[..]);
+        assert_eq!(&buffer[..5], &[0xef, 127, 0, 1, 0]);
+        assert_eq!(&buffer[5..], &orig[..]);
     }
 
     #[test]
@@ -180,11 +177,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        // 手动添加初始化 header 用于 unpack 测试
-        let mut test_buffer = vec![0xef];
-        test_buffer.extend(&buffer[..]);
-        let offset = transport.unpack(&mut test_buffer[1..][..]).unwrap();
-        assert_eq!(&test_buffer[1..][offset.data_range], &orig[..]);
+        let n = 1; // init byte
+        let offset = transport.unpack(&mut buffer[n..][..]).unwrap();
+        assert_eq!(&buffer[n..][offset.data_range], &orig[..]);
     }
 
     #[test]
@@ -194,23 +189,20 @@ mod tests {
 
         let mut two_buffer = DequeBuffer::with_capacity(0, 0);
         transport.pack(&mut buffer);
-        // 手动添加初始化 header
-        two_buffer.extend(&[0xef]);
-        two_buffer.extend(&buffer[..]);
+        two_buffer.extend(&buffer[1..]); // init byte
         let single_size = two_buffer.len();
 
         buffer = orig.clone();
         transport.pack(&mut buffer);
         two_buffer.extend(&buffer[..]);
 
-        // 跳过初始化 header
-        let offset = transport.unpack(&mut two_buffer[1..][..]).unwrap();
-        assert_eq!(&two_buffer[1..][offset.data_range], &orig[..]);
-        assert_eq!(offset.next_offset, single_size - 1);
+        let offset = transport.unpack(&mut two_buffer[..]).unwrap();
+        assert_eq!(&buffer[offset.data_range], &orig[..]);
+        assert_eq!(offset.next_offset, single_size);
 
-        let n = offset.next_offset + 1; // +1 因为跳过了 init byte
+        let n = offset.next_offset;
         let offset = transport.unpack(&mut two_buffer[n..]).unwrap();
-        assert_eq!(&two_buffer[n..][offset.data_range], &orig[..]);
+        assert_eq!(&buffer[offset.data_range], &orig[..]);
     }
 
     #[test]
@@ -218,11 +210,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(1024);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        // 手动添加初始化 header 用于 unpack 测试
-        let mut test_buffer = vec![0xef];
-        test_buffer.extend(&buffer[..]);
-        let offset = transport.unpack(&mut test_buffer[1..][..]).unwrap();
-        assert_eq!(&test_buffer[1..][offset.data_range], &orig[..]);
+        let n = 1; // init byte
+        let offset = transport.unpack(&mut buffer[n..]).unwrap();
+        assert_eq!(&buffer[n..][offset.data_range], &orig[..]);
     }
 
     #[test]

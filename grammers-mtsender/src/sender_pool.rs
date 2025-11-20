@@ -26,7 +26,7 @@ use tokio::{
     task::JoinSet,
 };
 
-pub(crate) type Transport = transport::Abridged;
+pub(crate) type Transport = transport::Intermediate;
 
 type InvokeResponse = Vec<u8>;
 
@@ -261,8 +261,8 @@ impl SenderPoolRunner {
     async fn connect_sender(
         &mut self,
         dc_option: &DcOption,
-    ) -> Result<Sender<transport::Abridged, mtp::Encrypted>, InvocationError> {
-        let transport = transport::Abridged::new;
+    ) -> Result<Sender<transport::Intermediate, mtp::Encrypted>, InvocationError> {
+        let transport = transport::Intermediate::new;
 
         #[cfg(feature = "proxy")]
         let addr = || {

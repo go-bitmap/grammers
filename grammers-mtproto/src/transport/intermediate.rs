@@ -50,15 +50,6 @@ impl Transport for Intermediate {
         // 不再在这里添加，以避免 header 和数据包一起发送
     }
 
-    fn write_init_header(&mut self) -> Option<Vec<u8>> {
-        if !self.init {
-            self.init = true;
-            Some(Self::TAG.to_vec())
-        } else {
-            None
-        }
-    }
-
     fn unpack(&mut self, buffer: &mut [u8]) -> Result<UnpackedOffset, Error> {
         if buffer.len() < 4 {
             return Err(Error::MissingBytes);
@@ -86,6 +77,15 @@ impl Transport for Intermediate {
             next_offset: 4 + len,
         })
     }
+
+    fn write_init_header(&mut self) -> Option<Vec<u8>> {
+        if !self.init {
+            self.init = true;
+            Some(Self::TAG.to_vec())
+        } else {
+            None
+        }
+    }
 }
 
 impl Tagged for Intermediate {
@@ -110,8 +110,7 @@ mod tests {
     fn pack_empty() {
         let (mut transport, mut buffer) = setup_pack(0);
         transport.pack(&mut buffer);
-        // 注意：初始化 header 现在通过 write_init_header() 单独发送，不再包含在 pack 中
-        assert_eq!(&buffer[..], &[0, 0, 0, 0]);
+        assert_eq!(&buffer[..], &[0xee, 0xee, 0xee, 0xee, 0, 0, 0, 0]);
     }
 
     #[test]
@@ -126,9 +125,8 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        // 注意：初始化 header 现在通过 write_init_header() 单独发送，不再包含在 pack 中
-        assert_eq!(&buffer[..4], &[128, 0, 0, 0]);
-        assert_eq!(&buffer[4..buffer.len()], &orig[..]);
+        assert_eq!(&buffer[..8], &[0xee, 0xee, 0xee, 0xee, 128, 0, 0, 0]);
+        assert_eq!(&buffer[8..buffer.len()], &orig[..]);
     }
 
     #[test]

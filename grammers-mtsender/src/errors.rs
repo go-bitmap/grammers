@@ -258,6 +258,30 @@ pub enum InvocationError {
     Authentication(authentication::Error),
 }
 
+impl Clone for InvocationError {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Rpc(err) => Self::Rpc(err.clone()),
+            Self::Io(err) => {
+                // 安全地克隆 io::Error，避免访问可能无效的内部状态
+                if let Some(os_err) = err.raw_os_error() {
+                    Self::Io(io::Error::from_raw_os_error(os_err))
+                } else {
+                    Self::Io(io::Error::new(
+                        err.kind(),
+                        format!("IO error ({:?})", err.kind()),
+                    ))
+                }
+            }
+            Self::Deserialize(err) => Self::Deserialize(err.clone()),
+            Self::Transport(err) => Self::Transport(err.clone()),
+            Self::Dropped => Self::Dropped,
+            Self::InvalidDc => Self::InvalidDc,
+            Self::Authentication(err) => Self::Authentication(err.clone()),
+        }
+    }
+}
+
 impl std::error::Error for InvocationError {}
 
 impl fmt::Display for InvocationError {
@@ -273,7 +297,22 @@ impl fmt::Display for InvocationError {
                 }
             }
             Self::Deserialize(err) => write!(f, "request error: {err}"),
-            Self::Transport(err) => write!(f, "request error: {err}"),
+            Self::Transport(err) => {
+                // 安全地格式化 transport::Error，避免访问可能无效的内存
+                match err {
+                    transport::Error::MissingBytes => write!(f, "request error: transport-level: need more bytes"),
+                    transport::Error::BadLen { got } => write!(f, "request error: transport-level: bad len (got {})", got),
+                    transport::Error::BadSeq { expected, got } => {
+                        write!(f, "request error: transport-level: bad seq (expected {}, got {})", expected, got)
+                    }
+                    transport::Error::BadCrc { expected, got } => {
+                        write!(f, "request error: transport-level: bad crc (expected {}, got {})", expected, got)
+                    }
+                    transport::Error::BadStatus { status } => {
+                        write!(f, "request error: transport-level: bad status (negative length -{})", status)
+                    }
+                }
+            }
             Self::Dropped => write!(f, "request error: dropped (cancelled)"),
             Self::InvalidDc => write!(f, "request error: invalid dc"),
             Self::Authentication(err) => write!(f, "request error: {err}"),
@@ -284,9 +323,25 @@ impl fmt::Display for InvocationError {
 impl From<ReadError> for InvocationError {
     fn from(error: ReadError) -> Self {
         match error {
-            ReadError::Io(error) => Self::from(error),
-            ReadError::Transport(error) => Self::from(error),
-            ReadError::Deserialize(error) => Self::from(error),
+            ReadError::Io(error) => {
+                // 安全地转换 io::Error，避免访问可能无效的内存
+                let os_err = error.raw_os_error();
+                let kind = os_err.map(|_| io::ErrorKind::Other)
+                    .or_else(|| {
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| error.kind()))
+                            .ok()
+                    })
+                    .unwrap_or(io::ErrorKind::Other);
+
+                let io_err = if let Some(os_err) = os_err {
+                    io::Error::from_raw_os_error(os_err)
+                } else {
+                    io::Error::new(kind, format!("IO error ({:?})", kind))
+                };
+                Self::Io(io_err)
+            }
+            ReadError::Transport(error) => Self::Transport(error),
+            ReadError::Deserialize(error) => Self::Deserialize(error),
         }
     }
 }
@@ -311,7 +366,22 @@ impl From<tl::deserialize::Error> for InvocationError {
 
 impl From<io::Error> for InvocationError {
     fn from(error: io::Error) -> Self {
-        Self::from(ReadError::from(error))
+        // 安全地转换 io::Error，避免通过 ReadError 转换时访问无效内存
+        // 直接创建 InvocationError::Io，避免中间转换
+        let os_err = error.raw_os_error();
+        let kind = os_err.map(|_| io::ErrorKind::Other)
+            .or_else(|| {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| error.kind()))
+                    .ok()
+            })
+            .unwrap_or(io::ErrorKind::Other);
+
+        let io_err = if let Some(os_err) = os_err {
+            io::Error::from_raw_os_error(os_err)
+        } else {
+            io::Error::new(kind, format!("IO error ({:?})", kind))
+        };
+        Self::Io(io_err)
     }
 }
 

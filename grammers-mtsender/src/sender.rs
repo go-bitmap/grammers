@@ -13,7 +13,7 @@ use grammers_mtproto::mtp::{
     self, BadMessage, Deserialization, DeserializationFailure, Mtp, RpcResult, RpcResultError,
 };
 use grammers_mtproto::transport::{self, Transport};
-use grammers_mtproto::{MsgId, authentication};
+use grammers_mtproto::{authentication, MsgId};
 use grammers_session::updates::UpdatesLike;
 use grammers_tl_types::{self as tl, Deserializable, RemoteCall};
 use log::{debug, error, info, trace, warn};
@@ -24,7 +24,7 @@ use tl::Serializable;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::error::TryRecvError;
-use tokio::time::{Instant, sleep_until};
+use tokio::time::{sleep_until, Instant};
 
 /// The maximum data that we're willing to send or receive at once.
 ///
@@ -121,14 +121,8 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
     ///
     /// Note that this does not attempt to invoke [`tl::functions::InitConnection`].
     /// It will simply open a new socket connection to the provided address.
-    pub async fn connect(mut transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
-        let mut stream = NetStream::connect(&addr).await?;
-
-        // 在连接建立后立即写入初始化 header（如果 transport 需要）
-        if let Some(init_header) = transport.write_init_header() {
-            let (_, mut writer) = stream.split();
-            writer.write_all(&init_header).await?;
-        }
+    pub async fn connect(transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
+        let stream = NetStream::connect(&addr).await?;
 
         Ok(Self {
             stream,
@@ -238,6 +232,16 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
     /// Setup the write buffer for the transport, unless a write is already pending.
     fn try_fill_write(&mut self) {
         if !self.write_buffer.is_empty() {
+            return;
+        }
+
+        // 在第一次发送数据之前，先发送初始化 header（如果 transport 需要）
+        // 这必须在任何数据包之前发送，以确保服务端能正确识别协议
+        if let Some(init_header) = self.transport.write_init_header() {
+            self.write_buffer.extend(&init_header);
+            // 初始化 header 发送后，立即返回，等待下次 step 时再发送实际数据
+            // 这样可以确保 header 和数据包分开发送
+            debug!("sending transport init header: {:?}", init_header);
             return;
         }
 
@@ -373,20 +377,79 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
 
     /// Handle errors that occured while performing I/O.
     fn on_error(&mut self, error: &ReadError) {
+        // 立即从原始错误中提取所有需要的信息，避免后续访问可能无效的内存
+        // 先创建 InvocationError，避免多次访问原始错误
+        let invocation_error = match error {
+            ReadError::Io(err) => {
+                // 立即提取错误信息，避免后续访问可能无效的 io::Error
+                // 优先尝试获取 raw_os_error，这是最安全的方式
+                let os_err = err.raw_os_error();
+                let kind = os_err.map(|_| io::ErrorKind::Other)
+                    .or_else(|| {
+                        // 如果无法获取 raw_os_error，尝试获取 kind
+                        // 使用 catch_unwind 防止访问无效内存导致 panic
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| err.kind()))
+                            .ok()
+                    })
+                    .unwrap_or(io::ErrorKind::Other);
+
+                let io_err = if let Some(os_err) = os_err {
+                    io::Error::from_raw_os_error(os_err)
+                } else {
+                    io::Error::new(kind, format!("IO error ({:?})", kind))
+                };
+                InvocationError::Io(io_err)
+            }
+            ReadError::Transport(err) => {
+                // 直接创建 InvocationError::Transport，避免通过 ReadError 转换
+                InvocationError::Transport(err.clone())
+            }
+            ReadError::Deserialize(err) => {
+                InvocationError::Deserialize(err.clone())
+            }
+        };
+
+        // 安全地格式化错误信息用于日志（使用已创建的 InvocationError）
+        let error_msg = match &invocation_error {
+            InvocationError::Io(err) => {
+                if let Some(os_err) = err.raw_os_error() {
+                    format!("read error, IO failed: OS error {}", os_err)
+                } else {
+                    format!("read error, IO failed: {:?}", err.kind())
+                }
+            }
+            InvocationError::Transport(err) => {
+                match err {
+                    transport::Error::MissingBytes => "read error, transport-level: need more bytes".to_string(),
+                    transport::Error::BadLen { got } => format!("read error, transport-level: bad len (got {})", got),
+                    transport::Error::BadSeq { expected, got } => {
+                        format!("read error, transport-level: bad seq (expected {}, got {})", expected, got)
+                    }
+                    transport::Error::BadCrc { expected, got } => {
+                        format!("read error, transport-level: bad crc (expected {}, got {})", expected, got)
+                    }
+                    transport::Error::BadStatus { status } => {
+                        format!("read error, transport-level: bad status (negative length -{})", status)
+                    }
+                }
+            }
+            InvocationError::Deserialize(err) => format!("read error, bad response: {:?}", err),
+            _ => format!("read error: {:?}", invocation_error),
+        };
+
         log::warn!(
             "marking all {} request(s) as failed: {}",
             self.requests.len(),
-            &error
+            error_msg
         );
 
-        // 先克隆一次 ReadError，然后在循环中重用，避免多次克隆可能导致的内存访问问题
-        // 每次从克隆的 ReadError 创建新的 InvocationError
-        let cloned_error = error.clone();
+        // 克隆一次 InvocationError，然后在循环中重用
+        let cloned_invocation_error = invocation_error.clone();
         self.requests
             .drain(..)
             .for_each(|r| {
                 // 忽略发送失败的情况（接收端可能已经丢弃）
-                let _ = r.result.send(Err(InvocationError::from(cloned_error.clone())));
+                let _ = r.result.send(Err(cloned_invocation_error.clone()));
             });
     }
 
