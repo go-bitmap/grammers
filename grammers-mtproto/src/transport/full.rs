@@ -63,6 +63,11 @@ impl Transport for Full {
         self.send_seq += 1;
     }
 
+    fn write_init_header(&mut self) -> Option<Vec<u8>> {
+        // Full transport 不需要初始化 header
+        None
+    }
+
     fn unpack(&mut self, buffer: &mut [u8]) -> Result<UnpackedOffset, Error> {
         // Need 4 bytes for the initial length
         if buffer.len() < 4 {

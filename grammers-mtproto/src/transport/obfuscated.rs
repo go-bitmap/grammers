@@ -78,9 +78,8 @@ impl<T: Transport + Tagged> Transport for Obfuscated<T> {
     fn pack(&mut self, buffer: &mut DequeBuffer<u8>) {
         self.inner.pack(buffer);
         self.cipher.encrypt(buffer.as_mut());
-        if let Some(head) = self.head.take() {
-            buffer.extend_front(&head);
-        }
+        // 注意：初始化 header (64字节) 现在通过 write_init_header() 单独发送，
+        // 不再在这里添加，以避免 header 和数据包一起发送
     }
 
     fn unpack(&mut self, buffer: &mut [u8]) -> Result<UnpackedOffset, Error> {
@@ -98,5 +97,10 @@ impl<T: Transport + Tagged> Transport for Obfuscated<T> {
             }
             Err(e) => Err(e),
         }
+    }
+
+    fn write_init_header(&mut self) -> Option<Vec<u8>> {
+        // Obfuscated transport 的初始化 header 是 64 字节
+        self.head.take().map(|head| head.to_vec())
     }
 }

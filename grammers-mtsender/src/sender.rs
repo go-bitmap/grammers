@@ -121,8 +121,15 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
     ///
     /// Note that this does not attempt to invoke [`tl::functions::InitConnection`].
     /// It will simply open a new socket connection to the provided address.
-    pub async fn connect(transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
-        let stream = NetStream::connect(&addr).await?;
+    pub async fn connect(mut transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
+        let mut stream = NetStream::connect(&addr).await?;
+
+        // 在连接建立后立即写入初始化 header（如果 transport 需要）
+        if let Some(init_header) = transport.write_init_header() {
+            let (_, mut writer) = stream.split();
+            writer.write_all(&init_header).await?;
+        }
+
         Ok(Self {
             stream,
             transport,

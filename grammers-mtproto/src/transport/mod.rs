@@ -101,6 +101,12 @@ pub trait Transport {
     /// with the data on the ranges from previous `UnpackedOffset` removed.
     /// Failing to do so will cause transports such as [`Obfuscated`] to misbehave.
     fn unpack(&mut self, buffer: &mut [u8]) -> Result<UnpackedOffset, Error>;
+
+    /// 获取初始化 header 字节，应该在连接建立时立即写入
+    ///
+    /// 返回 `Some(bytes)` 如果需要写入初始化 header，返回 `None` 如果不需要
+    /// 这个方法只会返回一次 header，后续调用返回 `None`
+    fn write_init_header(&mut self) -> Option<Vec<u8>>;
 }
 
 /// The trait used by the obfuscated transport to get the transport tags.

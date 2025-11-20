@@ -46,9 +46,16 @@ impl Transport for Intermediate {
 
         buffer.extend_front(&(len as i32).to_le_bytes());
 
+        // 注意：初始化 header (TAG) 现在通过 write_init_header() 单独发送，
+        // 不再在这里添加，以避免 header 和数据包一起发送
+    }
+
+    fn write_init_header(&mut self) -> Option<Vec<u8>> {
         if !self.init {
-            buffer.extend_front(&Self::TAG);
             self.init = true;
+            Some(Self::TAG.to_vec())
+        } else {
+            None
         }
     }
 
@@ -103,7 +110,8 @@ mod tests {
     fn pack_empty() {
         let (mut transport, mut buffer) = setup_pack(0);
         transport.pack(&mut buffer);
-        assert_eq!(&buffer[..], &[0xee, 0xee, 0xee, 0xee, 0, 0, 0, 0]);
+        // 注意：初始化 header 现在通过 write_init_header() 单独发送，不再包含在 pack 中
+        assert_eq!(&buffer[..], &[0, 0, 0, 0]);
     }
 
     #[test]
@@ -118,8 +126,9 @@ mod tests {
         let (mut transport, mut buffer) = setup_pack(128);
         let orig = buffer.clone();
         transport.pack(&mut buffer);
-        assert_eq!(&buffer[..8], &[0xee, 0xee, 0xee, 0xee, 128, 0, 0, 0]);
-        assert_eq!(&buffer[8..buffer.len()], &orig[..]);
+        // 注意：初始化 header 现在通过 write_init_header() 单独发送，不再包含在 pack 中
+        assert_eq!(&buffer[..4], &[128, 0, 0, 0]);
+        assert_eq!(&buffer[4..buffer.len()], &orig[..]);
     }
 
     #[test]

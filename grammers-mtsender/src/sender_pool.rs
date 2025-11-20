@@ -9,17 +9,17 @@
 use crate::configuration::ConnectionParams;
 use crate::errors::ReadError;
 use crate::{InvocationError, Sender, ServerAddr, connect, connect_with_auth};
+use base64::Engine;
+use base64::engine::general_purpose;
 use grammers_mtproto::{mtp, transport};
 use grammers_session::Session;
 use grammers_session::types::DcOption;
 use grammers_session::updates::UpdatesLike;
-use grammers_tl_types::{self as tl, enums, Deserializable};
+use grammers_tl_types::{self as tl, Deserializable, enums};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::{fmt, panic};
-use base64::Engine;
-use base64::engine::general_purpose;
 use tokio::task::AbortHandle;
 use tokio::{
     sync::{mpsc, oneshot},
@@ -295,19 +295,11 @@ impl SenderPoolRunner {
                 proxy: None,
                 params: self.connection_params.params.as_ref().and_then(|p| {
                     match general_purpose::STANDARD.decode(p.clone()) {
-                        Ok(bytes) => {
-                            match enums::Jsonvalue::from_bytes(&*bytes) {
-                                Ok(json_value) => {
-                                    Some(json_value)
-                                }
-                                Err(_) => {
-                                    None
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            None
-                        }
+                        Ok(bytes) => match enums::Jsonvalue::from_bytes(&*bytes) {
+                            Ok(json_value) => Some(json_value),
+                            Err(_) => None,
+                        },
+                        Err(_) => None,
                     }
                 }),
                 query: tl::functions::help::GetConfig {},
