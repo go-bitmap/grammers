@@ -140,7 +140,7 @@ impl Client {
         }
     }
 
-    pub(crate) async fn copy_auth_to_dc(&self, target_dc_id: i32) -> Result<(), InvocationError> {
+    pub async fn copy_auth_to_dc(&self, target_dc_id: i32) -> Result<(), InvocationError> {
         let mut auth_copied_to_dcs = self.0.auth_copied_to_dcs.lock().await;
         if auth_copied_to_dcs.contains(&target_dc_id) {
             return Ok(());
@@ -148,6 +148,10 @@ impl Client {
 
         let home_dc_id = self.0.session.home_dc_id();
         if target_dc_id == home_dc_id {
+            return Ok(());
+        }
+        let dc_option = self.0.session.dc_option(target_dc_id);
+        if !dc_option.is_none() && !dc_option.unwrap().auth_key.is_none() {
             return Ok(());
         }
 

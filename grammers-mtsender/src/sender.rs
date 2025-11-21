@@ -13,7 +13,7 @@ use grammers_mtproto::mtp::{
     self, BadMessage, Deserialization, DeserializationFailure, Mtp, RpcResult, RpcResultError,
 };
 use grammers_mtproto::transport::{self, Transport};
-use grammers_mtproto::{authentication, MsgId};
+use grammers_mtproto::{MsgId, authentication};
 use grammers_session::updates::UpdatesLike;
 use grammers_tl_types::{self as tl, Deserializable, RemoteCall};
 use log::{debug, error, info, trace, warn};
@@ -24,7 +24,7 @@ use tl::Serializable;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::error::TryRecvError;
-use tokio::time::{sleep_until, Instant};
+use tokio::time::{Instant, sleep, sleep_until};
 
 /// The maximum data that we're willing to send or receive at once.
 ///
@@ -121,9 +121,14 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
     ///
     /// Note that this does not attempt to invoke [`tl::functions::InitConnection`].
     /// It will simply open a new socket connection to the provided address.
-    pub async fn connect(transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
-        let stream = NetStream::connect(&addr).await?;
-
+    pub async fn connect(mut transport: T, mtp: M, addr: ServerAddr) -> Result<Self, io::Error> {
+        let mut stream = NetStream::connect(&addr).await?;
+        // 在连接建立后立即写入初始化 header（如果 transport 需要）
+        if let Some(init_header) = transport.write_init_header() {
+            let (_, mut writer) = stream.split();
+            writer.write_all(&init_header).await?;
+            sleep(Duration::from_millis(200)).await;
+        }
         Ok(Self {
             stream,
             transport,
@@ -384,12 +389,12 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
                 // 立即提取错误信息，避免后续访问可能无效的 io::Error
                 // 优先尝试获取 raw_os_error，这是最安全的方式
                 let os_err = err.raw_os_error();
-                let kind = os_err.map(|_| io::ErrorKind::Other)
+                let kind = os_err
+                    .map(|_| io::ErrorKind::Other)
                     .or_else(|| {
                         // 如果无法获取 raw_os_error，尝试获取 kind
                         // 使用 catch_unwind 防止访问无效内存导致 panic
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| err.kind()))
-                            .ok()
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| err.kind())).ok()
                     })
                     .unwrap_or(io::ErrorKind::Other);
 
@@ -404,9 +409,7 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
                 // 直接创建 InvocationError::Transport，避免通过 ReadError 转换
                 InvocationError::Transport(err.clone())
             }
-            ReadError::Deserialize(err) => {
-                InvocationError::Deserialize(err.clone())
-            }
+            ReadError::Deserialize(err) => InvocationError::Deserialize(err.clone()),
         };
 
         // 安全地格式化错误信息用于日志（使用已创建的 InvocationError）
@@ -418,21 +421,32 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
                     format!("read error, IO failed: {:?}", err.kind())
                 }
             }
-            InvocationError::Transport(err) => {
-                match err {
-                    transport::Error::MissingBytes => "read error, transport-level: need more bytes".to_string(),
-                    transport::Error::BadLen { got } => format!("read error, transport-level: bad len (got {})", got),
-                    transport::Error::BadSeq { expected, got } => {
-                        format!("read error, transport-level: bad seq (expected {}, got {})", expected, got)
-                    }
-                    transport::Error::BadCrc { expected, got } => {
-                        format!("read error, transport-level: bad crc (expected {}, got {})", expected, got)
-                    }
-                    transport::Error::BadStatus { status } => {
-                        format!("read error, transport-level: bad status (negative length -{})", status)
-                    }
+            InvocationError::Transport(err) => match err {
+                transport::Error::MissingBytes => {
+                    "read error, transport-level: need more bytes".to_string()
                 }
-            }
+                transport::Error::BadLen { got } => {
+                    format!("read error, transport-level: bad len (got {})", got)
+                }
+                transport::Error::BadSeq { expected, got } => {
+                    format!(
+                        "read error, transport-level: bad seq (expected {}, got {})",
+                        expected, got
+                    )
+                }
+                transport::Error::BadCrc { expected, got } => {
+                    format!(
+                        "read error, transport-level: bad crc (expected {}, got {})",
+                        expected, got
+                    )
+                }
+                transport::Error::BadStatus { status } => {
+                    format!(
+                        "read error, transport-level: bad status (negative length -{})",
+                        status
+                    )
+                }
+            },
             InvocationError::Deserialize(err) => format!("read error, bad response: {:?}", err),
             _ => format!("read error: {:?}", invocation_error),
         };
@@ -445,12 +459,10 @@ impl<T: Transport, M: Mtp> Sender<T, M> {
 
         // 克隆一次 InvocationError，然后在循环中重用
         let cloned_invocation_error = invocation_error.clone();
-        self.requests
-            .drain(..)
-            .for_each(|r| {
-                // 忽略发送失败的情况（接收端可能已经丢弃）
-                let _ = r.result.send(Err(cloned_invocation_error.clone()));
-            });
+        self.requests.drain(..).for_each(|r| {
+            // 忽略发送失败的情况（接收端可能已经丢弃）
+            let _ = r.result.send(Err(cloned_invocation_error.clone()));
+        });
     }
 
     /// Process the result of deserializing an MTP buffer.
