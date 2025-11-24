@@ -14,8 +14,10 @@ pub mod dialogs;
 pub mod files;
 pub mod messages;
 pub mod net;
+pub mod raw_updates;
 pub mod updates;
 
 pub use auth::SignInError;
 pub(crate) use client::ClientInner;
 pub use client::{Client, ClientConfiguration, UpdatesConfiguration};
+pub use raw_updates::RawUpdateStream;

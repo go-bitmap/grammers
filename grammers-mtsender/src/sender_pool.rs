@@ -374,7 +374,7 @@ impl SenderPoolRunner {
 }
 
 async fn run_sender(
-    mut sender: Sender<Transport, grammers_mtproto::mtp::Encrypted>,
+    mut sender: Sender<Transport, mtp::Encrypted>,
     mut rpc_rx: mpsc::UnboundedReceiver<Rpc>,
     updates: mpsc::UnboundedSender<UpdatesLike>,
 ) -> Result<(), ReadError> {
