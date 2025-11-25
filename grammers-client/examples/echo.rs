@@ -55,7 +55,7 @@ async fn async_main() -> Result {
         .init()
         .unwrap();
 
-    let api_id = env!("TG_ID").parse().expect("TG_ID invalid");
+    let api_id = 2040;
     let token = env::args().nth(1).expect("token missing");
 
     let session = Arc::new(SqliteSession::open(SESSION_FILE)?);
@@ -66,12 +66,23 @@ async fn async_main() -> Result {
         runner,
         updates,
         handle,
+        mut disconnection_events,
     } = pool;
     let pool_task = tokio::spawn(runner.run());
 
+    // 启动断开事件监听任务
+    let disconnect_task = tokio::spawn(async move {
+        while let Some(event) = disconnection_events.recv().await {
+            eprintln!(
+                "连接断开通知: DC {}, 错误: {}",
+                event.dc_id, event.error
+            );
+        }
+    });
+
     if !client.is_authorized().await? {
         println!("Signing in...");
-        client.bot_sign_in(&token, env!("TG_HASH")).await?;
+        client.bot_sign_in(&token, "b18441a1ff607e10a989891a5462e627").await?;
         println!("Signed in!");
     }
 
@@ -121,6 +132,10 @@ async fn async_main() -> Result {
     // You can try this graceful shutdown by sending a message saying "slow" and then pressing Ctrl+C.
     println!("Gracefully closing connection to notify all pending handlers...");
     handle.quit();
+
+    // 等待断开事件监听任务完成（通道关闭后会自动退出）
+    disconnect_task.abort();
+
     let _ = pool_task.await;
 
     // Give a chance to all on-going handlers to finish.
