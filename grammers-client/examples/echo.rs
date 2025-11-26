@@ -14,8 +14,8 @@
 
 use grammers_client::{Client, Update, UpdatesConfiguration};
 use grammers_mtsender::SenderPool;
-use grammers_session::storages::SqliteSession;
-use grammers_session::types::PeerRef;
+use grammers_session::storages::TlSession;
+use grammers_session::defs::PeerRef;
 use simple_logger::SimpleLogger;
 use std::sync::Arc;
 use std::{env, time::Duration};
@@ -58,7 +58,7 @@ async fn async_main() -> Result {
     let api_id = 2040;
     let token = env::args().nth(1).expect("token missing");
 
-    let session = Arc::new(SqliteSession::open(SESSION_FILE)?);
+    let session = Arc::new(TlSession::load_file_or_create(SESSION_FILE)?);
 
     let pool = SenderPool::new(Arc::clone(&session), api_id);
     let client = Client::new(&pool);

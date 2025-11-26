@@ -34,11 +34,16 @@ mod peer;
 mod session;
 mod session_data;
 pub mod storages;
-pub mod types;
+pub mod defs;
 pub mod updates;
+mod generated;
 
 #[allow(deprecated)]
 pub use chat::PeerAuthCache;
 pub(crate) use dc_options::{DEFAULT_DC, KNOWN_DC_OPTIONS};
 pub use session::Session;
 pub use session_data::SessionData;
+
+// Needed for auto-generated definitions.
+use generated::{enums, types};
+use grammers_tl_types::{Deserializable, Identifiable, Serializable, deserialize};
