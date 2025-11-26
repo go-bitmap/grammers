@@ -10,14 +10,14 @@ use std::sync::Arc;
 
 use grammers_client::Client;
 use grammers_mtsender::SenderPool;
-use grammers_session::storages::SqliteSession;
+use grammers_session::storages::MemorySession;
 use grammers_tl_types as tl;
 use tokio::runtime;
 
 type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 
 async fn async_main() -> Result {
-    let session = Arc::new(SqliteSession::open("ping.session")?);
+    let session = Arc::new(MemorySession::default());
     let pool = SenderPool::new(Arc::clone(&session), 1);
     let client = Client::new(&pool);
     let SenderPool { runner, handle, .. } = pool;

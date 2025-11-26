@@ -12,7 +12,5 @@
 //! your needs, you can also implement [`crate::Session`] yourself.
 
 mod memory;
-mod sqlite;
 
 pub use memory::MemorySession;
-pub use sqlite::SqliteSession;

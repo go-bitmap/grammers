@@ -14,7 +14,7 @@
 
 use grammers_client::{Client, Update, UpdatesConfiguration};
 use grammers_mtsender::SenderPool;
-use grammers_session::storages::SqliteSession;
+use grammers_session::storages::MemorySession;
 use grammers_session::types::PeerRef;
 use simple_logger::SimpleLogger;
 use std::sync::Arc;
@@ -24,7 +24,6 @@ use tokio::{runtime, time::sleep};
 
 type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 
-const SESSION_FILE: &str = "echo.session";
 
 async fn handle_update(client: Client, update: Update) {
     match update {
@@ -58,7 +57,7 @@ async fn async_main() -> Result {
     let api_id = 2040;
     let token = env::args().nth(1).expect("token missing");
 
-    let session = Arc::new(SqliteSession::open(SESSION_FILE)?);
+    let session = Arc::new(MemorySession::default());
 
     let pool = SenderPool::new(Arc::clone(&session), api_id);
     let client = Client::new(&pool);
