@@ -9,8 +9,6 @@
 use crate::configuration::ConnectionParams;
 use crate::errors::ReadError;
 use crate::{InvocationError, Sender, ServerAddr, connect, connect_with_auth};
-use base64::Engine;
-use base64::engine::general_purpose;
 use grammers_mtproto::{mtp, transport};
 use grammers_session::Session;
 use grammers_session::types::DcOption;
