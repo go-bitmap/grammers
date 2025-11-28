@@ -41,7 +41,7 @@ pub struct ConnectionParams {
     #[doc(hidden)]
     pub __non_exhaustive: (),
     /// Additional parameters to be passed to the [`initConnection`](https://core.telegram.org/method/initConnection)
-    pub params: Option<String>,
+    pub params: Option<Vec<u8>>,
 }
 
 impl Default for ConnectionParams {

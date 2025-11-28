@@ -327,11 +327,8 @@ impl SenderPoolRunner {
                 lang_code: self.connection_params.lang_code.clone(),
                 proxy: None,
                 params: self.connection_params.params.as_ref().and_then(|p| {
-                    match general_purpose::STANDARD.decode(p.clone()) {
-                        Ok(bytes) => match enums::Jsonvalue::from_bytes(&*bytes) {
-                            Ok(json_value) => Some(json_value),
-                            Err(_) => None,
-                        },
+                    match enums::Jsonvalue::from_bytes(p) {
+                        Ok(json_value) => Some(json_value),
                         Err(_) => None,
                     }
                 }),
