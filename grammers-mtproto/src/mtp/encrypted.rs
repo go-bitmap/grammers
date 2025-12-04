@@ -1299,11 +1299,15 @@ impl Mtp for Encrypted {
     }
 
     /// Processes an encrypted response from the server.
-    fn deserialize(&mut self, payload: &[u8]) -> Result<Vec<Deserialization>, DeserializeError> {
+    fn deserialize(
+        &mut self,
+        payload: &mut [u8],
+    ) -> Result<Vec<Deserialization>, DeserializeError> {
         crate::utils::check_message_buffer(payload)?;
 
         let plaintext = decrypt_data_v2(payload, &self.auth_key)?;
-        let mut buffer = Cursor::from_slice(&plaintext[..]);
+
+        let mut buffer = Cursor::from_slice(plaintext);
 
         let _salt = i64::deserialize(&mut buffer)?;
         let session_id = i64::deserialize(&mut buffer)?;

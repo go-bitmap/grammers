@@ -118,6 +118,7 @@ impl ParticipantIter {
 
                 // Don't actually care for the chats, just the users.
                 let mut peers = PeerMap::new(full.users, Vec::new());
+                client.cache_peers_maybe(&peers);
                 let peers = Arc::get_mut(&mut peers).unwrap();
 
                 buffer.extend(
@@ -153,6 +154,7 @@ impl ParticipantIter {
 
                 // Don't actually care for the chats, just the users.
                 let mut peers = PeerMap::new(users, Vec::new());
+                iter.client.cache_peers_maybe(&peers);
                 let peers = Arc::get_mut(&mut peers).unwrap();
 
                 iter.buffer.extend(
@@ -878,6 +880,16 @@ impl Client {
     /// ```
     pub fn action<C: Into<PeerRef>>(&self, peer: C) -> crate::types::ActionSender {
         crate::types::ActionSender::new(self, peer)
+    }
+
+    pub(crate) fn cache_peers_maybe(&self, peers: &Arc<PeerMap>) {
+        if self.0.configuration.auto_cache_peers {
+            for peer in peers.iter_peers() {
+                if !peer.min() {
+                    self.0.session.cache_peer(&peer.into());
+                }
+            }
+        }
     }
 }
 

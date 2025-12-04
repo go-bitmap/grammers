@@ -122,6 +122,7 @@ impl Message {
                 paid_message_stars: None,
                 paid_suggested_post_ton: false,
                 suggested_post: None,
+                schedule_repeat_period: None,
             }),
             fetched_in: Some(peer),
             client: client.clone(),
@@ -233,9 +234,13 @@ impl Message {
 
     pub fn peer_ref(&self) -> PeerRef {
         utils::peer_from_message(&self.raw)
-            .map(|peer| PeerRef {
-                id: PeerId::from(peer),
-                auth: PeerAuth::default(),
+            .map(PeerId::from)
+            .map(|id| match self.client.0.session.peer(id) {
+                Some(info) => info.into(),
+                None => PeerRef {
+                    id,
+                    auth: PeerAuth::default(),
+                },
             })
             .or(self.fetched_in)
             .expect("empty messages from updates should contain peer_id")
