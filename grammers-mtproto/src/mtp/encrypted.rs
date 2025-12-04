@@ -242,7 +242,7 @@ impl Encrypted {
             let body = tl::functions::GetFutureSalts {
                 num: NUM_FUTURE_SALTS,
             }
-            .to_bytes();
+                .to_bytes();
             self.salt_request_msg_id = Some(self.serialize_msg(buffer, &body, true));
         }
     }
@@ -1111,7 +1111,7 @@ impl Encrypted {
             body: container.decompress()?,
             ..message
         })
-        .map(|_| ())
+            .map(|_| ())
     }
 
     /// **[HTTP Wait/Long Poll]**
@@ -1225,8 +1225,11 @@ impl Mtp for Encrypted {
             }
         }
 
-        // 先序列化用户请求，只有在成功序列化用户请求后，才允许发送 GetFutureSalts
-        // 这样可以确保 GetFutureSalts 不会在用户请求（如 InvokeWithLayer）之前发送
+        self.try_request_salts(buffer);
+        if self.salt_request_msg_id.is_some() {
+            // Don't add anything else to the container while we still need new salts.
+            return None;
+        }
 
         // If we need to acknowledge messages, this notification goes in with the rest of requests
         // so that we can also include it. It has priority over user requests because these should
@@ -1236,18 +1239,8 @@ impl Mtp for Encrypted {
             let body = tl::enums::MsgsAck::Ack(tl::types::MsgsAck {
                 msg_ids: mem::take(&mut self.pending_ack),
             })
-            .to_bytes();
+                .to_bytes();
             self.serialize_msg(buffer, &body, false);
-        }
-
-        // 只有在已经有消息被序列化后（包括 ack 或用户请求），才允许发送 GetFutureSalts
-        // 这样可以确保 GetFutureSalts 不会在第一个用户请求之前发送
-        if self.msg_count > 0 {
-            self.try_request_salts(buffer);
-            if self.salt_request_msg_id.is_some() {
-                // Don't add anything else to the container while we still need new salts.
-                return None;
-            }
         }
 
         // Serialize `MAXIMUM_LENGTH` requests at most.

@@ -12,20 +12,40 @@
 
 #![allow(deprecated)]
 
-use grammers_client::{Client};
+use grammers_client::Client;
 use grammers_mtsender::{InvocationError, SenderPool};
-use grammers_session::storages::MemorySession;
 use grammers_session::Session;
+use grammers_session::storages::MemorySession;
+use grammers_session::types;
+use grammers_tl_types::enums::help::CountriesList;
 use grammers_tl_types::functions::auth::SendCode;
+use grammers_tl_types::functions::help::GetCountriesList;
 use grammers_tl_types::types::CodeSettings;
 use log::info;
 use simple_logger::SimpleLogger;
+use std::net::{Ipv4Addr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 use tokio::runtime;
-use grammers_tl_types::enums::help::CountriesList;
-use grammers_tl_types::functions::help::GetCountriesList;
-
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+const fn ipv4(a: u8, b: u8, c: u8, d: u8) -> SocketAddrV4 {
+    SocketAddrV4::new(Ipv4Addr::new(a, b, c, d), 10443)
+}
+
+const fn ipv6(a: u8, b: u8, c: u8, d: u8) -> SocketAddrV6 {
+    SocketAddrV6::new(ipv4(a, b, c, d).ip().to_ipv6_compatible(), 10443, 0, 0)
+}
+
+/// 测试服DC配置
+
+pub(crate) const KNOWN_DC_OPTIONS: [types::DcOption; 1] = [
+    types::DcOption {
+        id: 1,
+        ipv4: ipv4(127,0,0,1),
+        ipv6: ipv6(127,0,0,1),
+        auth_key: None,
+    },
+];
 
 async fn async_main() -> Result<()> {
     SimpleLogger::new()
@@ -35,7 +55,12 @@ async fn async_main() -> Result<()> {
 
     let api_id = 2040;
     let api_hash = "b18441a1ff607e10a989891a5462e627";
-    let session = Arc::new(MemorySession::default());
+    let s = MemorySession::default();
+    for dc_option in KNOWN_DC_OPTIONS.iter() {
+        s.set_dc_option(dc_option);
+    }
+    s.set_home_dc_id(1);
+    let session = Arc::new(s);
 
     let pool = SenderPool::new(Arc::clone(&session), api_id);
     let client = Client::new(&pool);
@@ -71,17 +96,15 @@ async fn async_main() -> Result<()> {
         lang_code: "en".parse().unwrap(),
         hash: 0,
     };
-    let countries = match client.invoke(&req).await{
-        Ok(resp)=> {resp.clone()},
+    let countries = match client.invoke(&req).await {
+        Ok(resp) => resp.clone(),
         Err(e) => return Err(e.into()),
     };
     match countries {
         CountriesList::NotModified => {}
-        CountriesList::List(list) => {
-            list.countries.iter().for_each(|country| {
-                info!("Country: {:?}", country);
-            })
-        }
+        CountriesList::List(list) => list.countries.iter().for_each(|country| {
+            info!("Country: {:?}", country);
+        }),
     }
     Ok(())
 }
