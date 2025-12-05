@@ -8,12 +8,13 @@
 
 use crate::configuration::ConnectionParams;
 use crate::errors::ReadError;
-use crate::{InvocationError, Sender, ServerAddr, connect, connect_with_auth};
+use crate::notification::DisconnectionNotification;
+use crate::{connect, connect_with_auth, InvocationError, Sender, ServerAddr};
 use grammers_mtproto::{mtp, transport};
-use grammers_session::Session;
 use grammers_session::types::DcOption;
 use grammers_session::updates::UpdatesLike;
-use grammers_tl_types::{self as tl, enums};
+use grammers_session::Session;
+use grammers_tl_types::{self as tl, enums, Deserializable};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
 use std::sync::Arc;
@@ -24,7 +25,7 @@ use tokio::{
     task::JoinSet,
 };
 
-pub(crate) type Transport = transport::Full;
+pub(crate) type Transport = transport::Intermediate;
 
 type InvokeResponse = Vec<u8>;
 
@@ -72,6 +73,8 @@ pub struct SenderPool {
     /// Update handling must be processed in a sequential manner,
     /// so this is a separate instance with no way to clone it.
     pub updates: mpsc::UnboundedReceiver<UpdatesLike>,
+    /// Receiver end of the disconnection events notification channel.
+    pub disconnection_events: mpsc::UnboundedReceiver<DisconnectionNotification>,
 }
 
 /// Manages and runs a pool of zero or more [`Sender`]s.
@@ -89,7 +92,9 @@ pub struct SenderPoolRunner {
     request_rx: mpsc::UnboundedReceiver<Request>,
     updates_tx: mpsc::UnboundedSender<UpdatesLike>,
     connections: Vec<ConnectionInfo>,
-    connection_pool: JoinSet<Result<(), ReadError>>,
+    connection_pool: JoinSet<Result<(i32, ()), (i32, ReadError)>>,
+    /// Sender end of the disconnection events notification channel.
+    disconnect_events_tx: Option<mpsc::UnboundedSender<DisconnectionNotification>>,
 }
 
 impl SenderPoolHandle {
@@ -146,6 +151,7 @@ impl SenderPool {
     ) -> Self {
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (updates_tx, updates_rx) = mpsc::unbounded_channel();
+        let (disconnect_tx, disconnect_rx) = mpsc::unbounded_channel();
 
         Self {
             runner: SenderPoolRunner {
@@ -156,9 +162,12 @@ impl SenderPool {
                 updates_tx,
                 connections: Vec::new(),
                 connection_pool: JoinSet::new(),
+                disconnect_events_tx: Some(disconnect_tx),
             },
             handle: SenderPoolHandle(request_tx),
             updates: updates_rx,
+            disconnection_events: disconnect_rx,
+
         }
     }
 }
@@ -172,13 +181,28 @@ impl SenderPoolRunner {
             tokio::select! {
                 biased;
                 completion = self.connection_pool.join_next(), if !self.connection_pool.is_empty() => {
-                    if let Err(err) = completion.unwrap() {
-                        if let Ok(reason) = err.try_into_panic() {
-                            panic::resume_unwind(reason);
+                    match completion.unwrap() {
+                        Ok(Ok((dc_id, ()))) => {
+                            // Normal exit (rpc_rx closed)
+                            self.connections.retain(|connection| connection.dc_id != dc_id);
+                        }
+                        Ok(Err((dc_id, err))) => {
+                            // Connection disconnected, send disconnection event notification
+                            log::debug!("Connection disconnected: DC {}, error: {:?}", dc_id, err);
+                            if let Some(ref tx) = self.disconnect_events_tx {
+                                let _ = tx.send(DisconnectionNotification {
+                                    dc_id,
+                                    error: format!("{:?}", err),
+                                });
+                            }
+                            self.connections.retain(|connection| connection.dc_id != dc_id);
+                        }
+                        Err(err) => {
+                            if let Ok(reason) = err.try_into_panic() {
+                                panic::resume_unwind(reason);
+                            }
                         }
                     }
-                    self.connections
-                        .retain(|connection| !connection.abort_handle.is_finished());
                 }
                 request = self.request_rx.recv() => {
                     let flow = if let Some(request) = request {
@@ -225,10 +249,12 @@ impl SenderPoolRunner {
                         self.session.set_dc_option(&dc_option);
 
                         let (rpc_tx, rpc_rx) = mpsc::unbounded_channel();
+                        let dc_id_for_task = dc_id;
                         let abort_handle = self.connection_pool.spawn(run_sender(
                             sender,
                             rpc_rx,
                             self.updates_tx.clone(),
+                            dc_id_for_task,
                         ));
                         self.connections.push(ConnectionInfo {
                             dc_id,
@@ -259,8 +285,8 @@ impl SenderPoolRunner {
     async fn connect_sender(
         &mut self,
         dc_option: &DcOption,
-    ) -> Result<Sender<transport::Full, mtp::Encrypted>, InvocationError> {
-        let transport = transport::Full::new;
+    ) -> Result<Sender<transport::Intermediate, mtp::Encrypted>, InvocationError> {
+        let transport = transport::Intermediate::new;
 
         #[cfg(feature = "proxy")]
         let addr = || {
@@ -291,7 +317,12 @@ impl SenderPoolRunner {
                 lang_pack: "".into(),
                 lang_code: self.connection_params.lang_code.clone(),
                 proxy: None,
-                params: None,
+                params: self.connection_params.params.as_ref().and_then(|p| {
+                    match enums::Jsonvalue::from_bytes(p) {
+                        Ok(json_value) => Some(json_value),
+                        Err(_) => None,
+                    }
+                }),
                 query: tl::functions::help::GetConfig {},
             },
         };
@@ -367,18 +398,19 @@ async fn run_sender(
     mut sender: Sender<Transport, grammers_mtproto::mtp::Encrypted>,
     mut rpc_rx: mpsc::UnboundedReceiver<Rpc>,
     updates: mpsc::UnboundedSender<UpdatesLike>,
-) -> Result<(), ReadError> {
+    dc_id: i32,
+) -> Result<(i32, ()), (i32, ReadError)> {
     loop {
         tokio::select! {
             step = sender.step() => match step {
                 Ok(all_new_updates) => all_new_updates.into_iter().for_each(|new_updates| {
                     let _ = updates.send(new_updates);
                 }),
-                Err(err) => break Err(err),
+                Err(err) => break Err((dc_id, err)),
             },
             rpc = rpc_rx.recv() => match rpc {
                 Some(rpc) => sender.enqueue_body(rpc.body, rpc.tx),
-                None => break Ok(()),
+                None => break Ok((dc_id, ())),
             },
         }
     }

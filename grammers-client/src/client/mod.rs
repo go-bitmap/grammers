@@ -15,6 +15,7 @@ pub mod files;
 pub mod messages;
 pub mod net;
 pub mod updates;
+mod raw_updates;
 
 pub use auth::SignInError;
 pub(crate) use client::ClientInner;

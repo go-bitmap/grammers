@@ -40,6 +40,7 @@ pub struct ConnectionParams {
     pub proxy_url: Option<String>,
     #[doc(hidden)]
     pub __non_exhaustive: (),
+    pub params: Option<Vec<u8>>,
 }
 
 impl Default for ConnectionParams {
@@ -70,6 +71,7 @@ impl Default for ConnectionParams {
             #[cfg(feature = "proxy")]
             proxy_url: None,
             __non_exhaustive: (),
+            params: None,
         }
     }
 }
